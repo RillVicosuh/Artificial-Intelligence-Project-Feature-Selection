@@ -1,0 +1,171 @@
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <math.h>
+#include <algorithm>
+#include <vector>
+#include <iterator>
+#include <chrono>
+
+using namespace std;
+void printFeatures(vector<int> currFeatures);
+float leave_one_out_cross_validation(vector<vector<float>> data, vector<int> currFeatures, int feature, int choice);
+void feature_search(vector<vector<float>> data, int choice);
+
+int main(){
+  	//Data from file to be stored in a vector
+  	vector<vector<float>> featureData;
+  	string fileInput;
+  	string data;
+  	int choice = 0;
+  	cout << "Type the name of the file to test: ";
+  	cin >> fileInput;
+  	ifstream fileData(fileInput);
+  	if (!fileData.is_open()){
+		cout << "File doesn't exist. Can't open file." << endl;
+		return 1;
+  	}
+  	//As long as the end of the file has not been reached, we continue
+  	while (getline(fileData, data)){
+    		float num;
+		istringstream x(data);
+        	vector<float> row;
+        	//Retrieves every individual value from a specific line, including the class and feature, and inserts
+		while (x >> num){
+			row.push_back(num);
+		}
+        	//Put that row into the vector once done
+        	featureData.push_back(row);
+		row.clear();
+	}
+	cout << "Type the number of algorithm you want to run." << endl;
+	cout << "\t1) Forward Selection" << endl;
+	cout << "\t2) Backward Elmination" << endl;
+	cin >> choice;
+        //Excluding the class attribute by subtracting 1
+	cout << "This dataset has " << featureData.at(0).size() - 1 << " features (not including the class attribute), with " << featureData.size() << " instances." << endl;
+        auto timeStart = chrono::steady_clock().now();//Calculating the time for the search
+	feature_search(featureData, choice);
+        auto timeEnd = chrono::steady_clock().now();
+        auto totalTime = timeEnd - timeStart;
+        cout << "Total time: " << chrono::duration_cast<chrono::microseconds>(totalTime).count() << "microseconds" << endl;
+	return 0;
+}
+//Taking a vector with the current set of features to output
+void printFeatures(vector<int> currFeatures){
+  	cout << "{";
+  	for (int i = 0; i < currFeatures.size(); i++){
+		if (i == currFeatures.size() - 1){
+			cout << currFeatures.at(i) << "}";
+		}
+		else{
+		cout << currFeatures.at(i) << ", ";
+		}
+ 	}
+}
+
+float leave_one_out_cross_validation(vector<vector<float>> data, vector<int> currFeatures, int feature, int choice){
+	float accuracy = 0;
+	//The first row for the computation will be acquired
+	for (int i = 0; i < data.size(); i++){
+		float tempDistance = 0;
+		float nearestNeighborDist = INFINITY;//The distance of the nearest neighbors
+		int obj1, obj2;//Theses will be the specific positions of the rows/objects which are nearest neighbors
+		//The second row will be acquired
+		for (int j = 0; j < data.size(); j++){
+	                //If both rows are the same, don't continue
+			if (j != i){
+				tempDistance = 0;
+        			//The distance will be calculate for every feature in the rows. Using euclidean distance.
+				for (int r = 0; r < currFeatures.size(); r++){
+					tempDistance = tempDistance + pow(data[i][currFeatures.at(r)] - data[j][currFeatures.at(r)], 2);//Getting the sum
+				}
+				if (choice == 1){
+					tempDistance = sqrt(tempDistance + pow(data[i][feature] - data[j][feature], 2));
+				}
+				else if (choice == 2){
+					tempDistance = sqrt(tempDistance - pow(data[i][feature] - data[j][feature], 2));
+				}
+        			//If a shorter distance is found, then update the two objects as nearest neighbors and store the new distance
+        			if (tempDistance < nearestNeighborDist){
+          				nearestNeighborDist = tempDistance;
+					obj1 = i;
+					obj2 = j;
+        			}
+			}
+		}
+		if (data[obj1][0] == data[obj2][0]){//If the object is classified correctly, increase the accuracy count
+			accuracy++;
+		}
+	}
+	return ((accuracy / data.size()) * 100);//The number of correctly classified objects divided by the total amount of objects
+}
+
+void feature_search(vector<vector<float>> data, int choice){
+	vector<int> currFeatures;//This will be the set of features that is momentarily being looked at
+	vector<int> highestAcc; //The highest accuracy set
+	float highest = 0; //The accuracy of the highest accuracy set
+  	//Goes through the size of a row in the data and inserts the feature number into the vector(excluding the class)
+	for (int i = 1; i < data.at(0).size(); i++){//Needed for backwards elimination
+		currFeatures.push_back(i);
+	}
+  	if(choice == 2){//Sometimes get a weird accuracy error when doing this for forward selection so only made it avaible to backward elimination in final code
+		highest = leave_one_out_cross_validation(data, currFeatures, 0, choice);
+		cout << "Running nearest neighbor with all " << data.at(0).size() - 1 <<" features, using \"leaving-one-out\" evaluation, I get an accuracy of " << highest << "%\n" << endl;}
+  	cout << "\nBeginning search.\n" << endl;
+  	if(choice == 1) currFeatures.clear();
+
+	for (int i = 1; i < data.at(0).size(); i++){//Each iteration will be a level
+		int addFeature; //The feature that will be added at the current level
+		float currAcc = 0; //This will be the accuracy that is currently the best
+    		float tempAcc;
+		//This will go through each column or feature(excluding the class)
+		for (int f = 1; f < data.at(0).size(); f++){
+			vector<int> intersect; //This will store the intersections
+			vector<int> current; //This will store the number of the current feature
+			current.push_back(f);
+			sort(currFeatures.begin(), currFeatures.end());//currFeatures is sorted in ascending order for convenience in the interface
+      			//Will find the features that are in both sets and inlcude it in the intersects set. Will only do so if the current feature we're looking at has already been added
+			set_intersection(currFeatures.begin(),currFeatures.end(),current.begin(), current.end(),back_inserter(intersect));
+      			//Consider adding if it has not already been added
+			if ((intersect.empty() && choice == 1) || (choice == 2 && !intersect.empty())) {
+        			if(choice == 1) currFeatures.push_back(f);//Pushing the current feature to display in the interface
+        			if(choice == 2) currFeatures.erase(remove(currFeatures.begin(), currFeatures.end(), f), currFeatures.end());//Removing the current feature to display for the backwards elimination interface
+				cout << "\tUsing feature(s) ";
+				printFeatures(currFeatures);
+				if(choice == 1) currFeatures.pop_back();//Remove the last element of the current features
+        			if(choice == 2){//Add the current feature we are looking at back to the vector
+          				currFeatures.push_back(f);
+          				sort(currFeatures.begin(), currFeatures.end());
+        			}
+				tempAcc = leave_one_out_cross_validation(data, currFeatures, f, choice);
+				cout << " accuracy is " << tempAcc << "%" << endl;
+        			//If the accuracy from leaving one out evaluation is higher than the current highest accuracy, then continue
+				if (tempAcc > currAcc){
+					currAcc = tempAcc;
+					addFeature = f; //Add the feature number of the feature that provided the highest accuracy
+				}
+			}
+
+		}
+    		if (choice == 1){
+		  	currFeatures.push_back(addFeature); //Add the feature that provided the highest accuracy
+			cout << "Feature set ";
+			printFeatures(currFeatures); 
+			cout << " was best, accuracy is " << currAcc << "%\n" << endl;
+		}
+		else if (choice == 2){//Remove the feature that results in the highest accuracy set using the erase-remove idiom
+      			currFeatures.erase(remove(currFeatures.begin(), currFeatures.end(), addFeature), currFeatures.end());
+			cout << "Feature set ";
+			printFeatures(currFeatures); 
+			cout << " was best, accuracy is " << currAcc << "%\n" << endl;
+		}
+		if (currAcc > highest){//Check the accuracy after going through each level
+      			highest = currAcc;
+			highestAcc = currFeatures;//Make the current set of features the highest accuracy set
+		}
+	}
+	cout << "Search is finished!! The best feature subset is ";
+	printFeatures(highestAcc);
+	cout << ", which has an accuracy of " << highest << "%" << endl;
+}
